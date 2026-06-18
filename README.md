@@ -82,7 +82,7 @@ VALUES
 Execution Trigger: http://127.0.0.1:8000/api/queue/dynamic-schedule?available_counters=1
 
 Execution Proof:
-<img width="737" height="522" alt="image" src="https://github.com/user-attachments/assets/fed633d5-ef2a-4888-8682-c5b4ffce5090" />
+<img width="737" height="522" alt="Test Case 1_Standard Serialized FIFO Execution Flow" src="https://github.com/user-attachments/assets/4fd8a644-3ade-429e-9662-6bfb8670b6b6" />
 
 🧪 Test Case 2: Emergency Interrupt-Driven Preemption
 Scenario: High-risk medical records intercepting an active normal queue thread.
@@ -93,8 +93,9 @@ VALUES
 ('Patient A (Low Urgency)', 'WITHDRAWAL', 20000, 1, 0, 3, 'NONE', 12, 'WAITING', '2026-06-18 12:50:00'),
 ('Patient B (Accident Critical)', 'WITHDRAWAL', 80000, 1, 0, 9, 'NONE', 5, 'WAITING', '2026-06-18 12:51:00');
 Execution Proof:
-<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/ffe762df-b38f-48f8-9702-9c0647e7e3f1" />
-<img width="1037" height="421" alt="image" src="https://github.com/user-attachments/assets/afdc0f08-298c-4ecb-a9f1-5a2f16e6d87d" />
+<img width="1037" height="421" alt="Test Case 2_Emergency Interrupt-Driven Preemption" src="https://github.com/user-attachments/assets/dc51a243-c65b-4eab-83d8-f8bfab14b4ce" />
+<img width="1037" height="421" alt="Test Case 2_Emergency Interrupt-Driven Preemption" src="https://github.com/user-attachments/assets/837ee1b7-34d8-4475-8a4e-b769873be03a" />
+
 
 🧪 Test Case 3: Counter-Blocking Timeout (SJF Activation)
 Scenario: A counter operator halts a transaction, triggering the fallback aging and Shortest-Job-First (SJF) balancing layer.
@@ -104,8 +105,10 @@ DELETE FROM bank_tokens WHERE is_medical_emergency = 1;
 UPDATE bank_tokens SET token_status = 'PAUSED' WHERE customer_name = 'Ramesh Uncle';
 UPDATE bank_tokens SET token_status = 'WAITING' WHERE customer_name = 'Rahul Sharma';
 Execution Proof:
-<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/da1b3632-1dc7-4be5-ba94-53c69bcd2e5d" />
-<img width="1092" height="282" alt="image" src="https://github.com/user-attachments/assets/8c576620-0b79-4b9d-9008-285f03963536" />
+<img width="1092" height="282" alt="Test Case 3_Counter-Blocking Timeout (SJF Activation)" src="https://github.com/user-attachments/assets/3c2a70be-b77e-4947-9672-8d170aa00ea1" />
+
+<img width="1092" height="282" alt="Test Case 3_Counter-Blocking Timeout (SJF Activation)" src="https://github.com/user-attachments/assets/643b4e09-4d6f-429d-8daa-bb5d7ebeec4b" />
+
 
 
 🧪 Test Case 4: Vulnerable Demographic Routing Preemption
@@ -120,8 +123,8 @@ VALUES
 ('Seema Ji (Pregnant)', 'DEPOSIT', 10000, 0, 0, 'PREGNANT', 5, 'WAITING', '2026-06-18 13:02:00'),
 ('Verma Ji (Senior Citizen)', 'WITHDRAWAL', 15000, 0, 0, 'SENIOR_CITIZEN', 12, 'WAITING', '2026-06-18 13:03:00');
 Execution Proof:
-<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/07e28163-97a8-49d8-9ea4-b7cb7b084ba9" />
-blob:https://gemini.google.com/7be1687e-94ec-4ba4-8fbf-6ceff06e164d
+<img width="1920" height="1020" alt="Test Case 4_Vulnerable Demographic Routing Preemption_1" src="https://github.com/user-attachments/assets/5b910b92-05f7-45d4-8a09-46b6292013ba" />
+<img width="1017" height="287" alt="Test Case 4_Vulnerable Demographic Routing Preemption" src="https://github.com/user-attachments/assets/261dc156-e5c3-477f-b4d1-003766f1165c" />
 
 🧪 Test Case 5: Horizontal Multi-Counter Load Balancing
 Scenario: The banking facility deploys multiple operational processing windows to handle heavy traffic loads dynamically.
@@ -135,8 +138,9 @@ VALUES
 ('Vikas Yuvraj', 'DEPOSIT', 8000, 0, 0, 'NONE', 5, 'WAITING', '2026-06-18 13:12:00');
 
 Execution Proof:
-<img width="1392" height="232" alt="image" src="https://github.com/user-attachments/assets/3fbe17fb-a2b5-4582-bd06-d11bf05c485d" />
-<img width="807" height="307" alt="image" src="https://github.com/user-attachments/assets/ee941c5f-7984-4616-8f9b-88b37248a60b" />
+<img width="1392" height="232" alt="Test Case 5_Horizontal Multi-Counter Load Balancing" src="https://github.com/user-attachments/assets/3129a794-43f8-4c63-9515-260e9a7d7355" />
+<img width="807" height="307" alt="Test Case 5_Horizontal Multi-Counter Load Balancing_1" src="https://github.com/user-attachments/assets/b9eaa595-60a1-4ac7-b8fd-8ecb795c921f" />
+
 
 
 
