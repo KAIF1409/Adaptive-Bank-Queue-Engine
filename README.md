@@ -23,6 +23,23 @@ As an engineer sitting on that bank chair, I couldn't unsee these architectural 
 
 ---
 
+## 🛠️ Engineering Ownership & AI Collaboration
+
+To build this project efficiently, I adopted a modern **Human-AI Pair Programming** workflow. It is important to define the exact boundaries of how this architecture was created:
+
+### 🧠 My Core Architecture & Design Responsibilities (Done by Me)
+* **The Vision & Framework:** Identified the dynamic queue breakdown at the Canara Bank ground floor and designed the conceptual bridge between banking anomalies and low-level Operating System scheduling constraints.
+* **Algorithm Ideation:** Formulated the custom mathematical weight structures, defined when the engine should trigger preemption vs aging, and built out the 5 distinct real-world boundary test cases.
+* **System Logic & Troubleshooting:** Mapped out the database status tracking layers (`PAUSED`, `WAITING`, `COMPLETED`) and debugged runtime integration and remote origin Git deployment blocks.
+
+### 🤖 Gemini's Synthesis & Optimization Value (Done by AI)
+* **Code Implementation & Refinement:** Assisted in translating my theoretical OS scheduling equations into clean, executable FastAPI routing paths and asynchronous script segments.
+* **SQL Generation:** Streamlined the design of schema tables and raw configuration test strings to match enterprise data indexing standards.
+* **Documentation Structuring:** Co-authored this detailed architectural markdown blueprint to maximize telemetry legibility and professional scannability.
+
+
+---
+
 ## 🛑 Problem Statement
 
 Conventional banking routers rely on naive, static FIFO scheduling arrays. These legacy architectures fail catastrophically because they treat queue management as a fixed stream rather than a fluid, unpredictable human ecosystem. They completely lack the mathematical infrastructure to handle:
