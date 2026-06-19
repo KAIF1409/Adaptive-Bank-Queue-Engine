@@ -1,166 +1,140 @@
-# 🏦 Adaptive Banking Queue Core Engine (ABQE)
-### Dynamic Interrupt-Driven Hybrid Priority & Distributed Load-Balancing Scheduler
+# Adaptive Bank Queue Engine (ABQE)
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![MySQL](https://img.shields.io/badge/MySQL-00000F?style=for-the-badge&logo=mysql&logoColor=white)](https://www.mysql.com/)
-[![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+A FastAPI backend that replaces simple FIFO token queues at a bank counter with a priority-aware scheduler — one that can interrupt for emergencies, age out long-waiting customers, run shortest-job-first when things get backed up, and balance load across multiple counters.
 
 ---
 
-## 📖 The Origin Story: My Real-World Observation at Canara Bank
+## Why I built this
 
-This project was born out of pure, genuine frustration while I was personally trapped inside a heavily crowded **Canara Bank** branch for over an hour. 
+I was at a Canara Bank branch waiting to make a ₹3,000 cash deposit — a two-minute job — and ended up sitting there for over an hour. While I waited, I watched the token system completely fail at handling anything outside the happy path:
 
-I had walked into the branch just to make a simple, routine **₹3,000 cash deposit**—a transaction that realistically takes less than 2 minutes at the counter window. The branch was physically premium, equipped with proper waiting sofas, chairs, and centralized air conditioning. I walked up to the electronic touchscreen kiosk machine, tapped the screen, generated my sequential token, and took a seat. 
+- An elderly customer ahead of me had a ₹4 lakh transaction that needed manual counting and verification. It tied up the counter for a long time, and everyone behind him — including my quick deposit — just sat there waiting, even though our transactions would've taken a fraction of the time.
+- Someone walked in needing an urgent medical-related withdrawal and got handed a regular token, stacked behind 40 people on the same priority level as a routine deposit.
 
-But as I sat there for **more than an hour**, watching my life tick away while tracking the token display board, I witnessed the entire backend system operationally break down due to its rigid, primitive routing logic:
+Sitting there, it was hard not to notice that this is basically the same problem operating systems deal with when scheduling processes on a CPU — head-of-line blocking, convoy effects, starvation, the works. So I went home and built a scheduler for it, using the same ideas (priority scheduling, aging, preemption) that OS schedulers use, just applied to a bank queue instead of a process queue.
 
-1. **The Counter-Blocking & High-Volume Avalanche:** While I was waiting for my quick 2-minute turn, an elderly senior citizen walked in. He had a massive transaction pipeline—**₹4 Lakhs in cash** that required manual counting, security verification, and extensive bundle auditing. His token number was generated **way after mine**. However, because of a flawed implementation of dynamic priority or a single counter window lockup, his high-volume task completely stalled the thread. 
-2. **The 5-Min vs. 30-Min Penalty:** My 5-minute processing window was instantly delayed by an extra 30+ minutes because the system forced a tiny ₹3,000 deposit thread to sleep while a massive ₹4 Lakh financial processing thread held a monopoly over the teller resource. This is a text-book definition of **Head-of-Line (HOL) Blocking**, **Convoy Effects**, and severe **Thread Starvation**.
-3. **The Invisible Emergency Dilemma:** During this exact chaos, another man rushed into the branch, visibly panicked, needing immediate manager clearance for a medical draft to release funds for a family member in a critical hospital emergency nearby. The electronic kiosk blindly printed a standard routine token for him, stacking him behind 40 relaxed customers sitting on the couches. Watching a critical life-and-death emergency get treated with the exact same system weight as a routine account update felt fundamentally broken.
+## What it actually does
 
-As an engineer sitting on that bank chair, I couldn't unsee these architectural flaws. I realized that physical banking floors suffer from the exact same resource allocation, priority inversion, and deadlock problems that operating systems face when scheduling concurrent processes on a CPU. I walked back home, mapped core **OS Kernel Scheduling Concepts** to banking operations, and engineered the **Adaptive Banking Queue Core Engine (ABQE)**.
+The core of the project is one endpoint: `GET /api/queue/dynamic-schedule`. Given the current set of tokens in the database, it recomputes a priority rank for every token and returns the queue in the order people should actually be served, instead of strict arrival order. It also assigns tokens across however many counters are marked available.
 
----
+Three scheduling modes, depending on what's happening in the queue:
 
-## 🛠️ Engineering Ownership & AI Collaboration
+1. **Strict FIFO** — the default. No emergencies, no timeouts. Tokens are ranked by arrival timestamp, same as a normal token system.
+2. **Emergency interrupt mode** — triggers the moment a token is flagged `is_medical_emergency` or `is_financial_emergency`. These get pulled to the front, ranked further by an urgency score, and (with multiple counters active) routed to whichever counter is free fastest.
+3. **Adaptive/timeout mode** — triggers when at least one token is `PAUSED` (a counter got stuck or stalled). Once this kicks in, the engine starts behaving differently: shorter transactions get pushed ahead of longer ones (a rough shortest-job-first pass, since transaction amount roughly predicts how long it'll take), and tokens that have been waiting 35+ minutes — or belong to a senior citizen / pregnant customer — get their priority boosted so they don't get starved out indefinitely.
 
-To build this project efficiently, I adopted a modern **Human-AI Pair Programming** workflow. It is important to define the exact boundaries of how this architecture was created:
+When more than one counter is available, the engine round-robins normal tokens across them and tries to keep emergency tokens off counters that are already handling another emergency.
 
-### 🧠 My Core Architecture & Design Responsibilities (Done by Me)
-* **The Vision & Framework:** Identified the dynamic queue breakdown at the Canara Bank ground floor and designed the conceptual bridge between banking anomalies and low-level Operating System scheduling constraints.
-* **Algorithm Ideation:** Formulated the custom mathematical weight structures, defined when the engine should trigger preemption vs aging, and built out the 5 distinct real-world boundary test cases.
-* **System Logic & Troubleshooting:** Mapped out the database status tracking layers (`PAUSED`, `WAITING`, `COMPLETED`) and debugged runtime integration and remote origin Git deployment blocks.
+## Tech stack
 
-### 🤖 Gemini's Synthesis & Optimization Value (Done by AI)
-* **Code Implementation & Refinement:** Assisted in translating my theoretical OS scheduling equations into clean, executable FastAPI routing paths and asynchronous script segments.
-* **SQL Generation:** Streamlined the design of schema tables and raw configuration test strings to match enterprise data indexing standards.
-* **Documentation Structuring:** Co-authored this detailed architectural markdown blueprint to maximize telemetry legibility and professional scannability.
+- **FastAPI** — the API layer
+- **PyMySQL** — talks to a MySQL database (`bank_tokens` table tracks token state: `WAITING`, `PROCESSING`, `PAUSED`, `COMPLETED`)
+- **Vercel** — deployment (single `api/index.py` entrypoint, see `vercel.json`)
 
+It's a single-file backend right now — no frontend, no auth layer, just the scheduling API and the database. That's intentional for this stage; the point was to get the scheduling logic right first.
 
----
+## How I built it
 
-## 🛑 Problem Statement
+This was a solo project, and I used AI (Gemini) as a coding assistant rather than a co-architect. To be specific about the split:
 
-Conventional banking routers rely on naive, static FIFO scheduling arrays. These legacy architectures fail catastrophically because they treat queue management as a fixed stream rather than a fluid, unpredictable human ecosystem. They completely lack the mathematical infrastructure to handle:
-1. **Dynamic Priority Interruption:** Injecting unexpected high-urgency events cleanly without breaking or crashing the existing sequence.
-2. **Resource Lockups / Counter Blocking:** Gracefully shifting resources when a transaction gets paused, delayed, or timed out at a teller window.
-3. **Operational Load Imbalance:** Efficiently spreading workload across multiple physical branch counters during sudden traffic spikes.
+- **Mine:** the actual problem framing — mapping bank-floor chaos to OS scheduling concepts — the priority formulas, deciding when the engine should switch between FIFO / emergency / aging modes, the amount-based time brackets, and the test scenarios used to verify it actually behaves correctly.
+- **AI-assisted:** turning those rules into FastAPI route code, writing the SQL schema/queries, and drafting documentation.
 
----
+I think it's worth being upfront about that rather than pretending every line was typed from scratch — the scheduling logic and the reasoning behind it are mine; the boilerplate around it had help.
 
-## 📈 Macro-Scale Industry Analysis: How Today's Banking Tech Fails
+## The priority math
 
-After returning home, I analyzed how modern fintech and enterprise banking industries tackle queue logistics. Currently, the commercial banking industry relies on two primary methods:
-* **Static Token Multi-Channelling:** Dividing queues by transaction types (e.g., separate lines for 'Loans' vs. 'Deposits'). This fails when a single channel gets blocked, leaving other counters completely underutilized.
-* **Linear FIFO Overflows:** Blindly routing the next token to the next free teller, which completely fails to handle state alterations like a transaction getting `PAUSED` mid-way or handling high-urgency preemptive bypasses cleanly.
+For each token, depending on which mode is active:
 
-### 🧠 Why My Code is Unique & Outsmarts Conventional Banking Systems
+**Emergency mode:**
+```
+priority_score = 0 - (medical_urgency_score × 10) + effective_time_remaining
+```
 
-While industry tech giants design queue systems as simple database logging software, I designed **ABQE** by treating bank floor mechanics as a **low-level Operating System Kernel**. Here is what makes my architecture completely unique and superior to existing commercial setups:
+**Timeout / aging mode:**
+```
+priority_score = 100 - demographic_boost + (effective_time_remaining × 0.5)
+```
+(tokens waiting 35+ minutes get an extra boost pushing them toward the front)
 
-* **Shortest-Job-First (SJF) Mitigation for Small Tokens:** To ensure that a guy depositing ₹3,000 never gets stuck behind a ₹4 Lakh transaction thread again, my engine uses transaction amount brackets to accurately predict processing times (`allocated_time_mins`). When the counter enters an optimization sweep, shorter tasks are dispatched first to clear bheed instantly.
-* **Stateful Preemption vs. Static Separation:** Industry systems force users into fixed lines. My engine dynamically intercepts the existing execution stack. When a medical emergency token is created, it triggers a system software interrupt, dropping all non-urgent priorities to index 0.
-* **Mathematical Demographic Aging Core:** To prevent healthy or large-amount customers from facing infinite starvation while vulnerable classes or short transactions are prioritized, my engine utilizes an integrated **Aging Algorithm**. If a regular token's waiting metric passes 35 minutes, its priority dynamically decays its placement constraint, moving it forward smoothly to maintain system fairness.
-* **Dynamic Multi-Counter Balancing:** Instead of simple static routing, the engine runs a real-time distributed routing calculation. It automatically tracks counter load shifts and deploys round-robin allocations across multiple active teller windows seamlessly.
+**Standard mode:**
+```
+priority_score = token_creation_timestamp
+```
 
----
+Lower score = served sooner. The queue is just sorted by this value before counters are assigned.
 
-## 🛠️ System Architecture & Mathematical Ranking Matrix
+## API endpoints
 
-The scheduler continuously computes a real-time `computed_priority_rank` using a custom hybrid execution pipeline:
+| Endpoint | Method | What it does |
+|---|---|---|
+| `/` | GET | Health check |
+| `/api/tokens/create` | POST | Issues a new token — takes customer info, transaction type/amount, emergency flags, special category, and auto-assigns a time estimate based on transaction size |
+| `/api/queue/dynamic-schedule?available_counters=N` | GET | Recomputes and returns the live prioritized queue across N counters |
 
-1. **Absolute Emergency State:** Triggered when `is_medical_emergency = 1`.
-   $$Priority\_Score = 0 - (Urgency\_Score \times 10) + Effective\_Service\_Time$$
-2. **Timeout Preemption Mode:** Activated when an active transaction is marked as `PAUSED`.
-   $$Priority\_Score = 100 - Demographic\_Boost + (Effective\_Service\_Time \times 0.5)$$
-3. **Strict Standard State:** Falls back to timestamp-based epoch serialization.
-   $$Priority\_Score = \lfloor Epoch\_Timestamp \rfloor$$
+## Test scenarios I ran
 
----
+I tested this against five scenarios to make sure each mode actually triggers and behaves the way it's supposed to — standard FIFO, emergency preemption, counter-timeout triggering the aging/SJF fallback, vulnerable-demographic routing, and multi-counter load balancing. Each one was run against a fresh database state with specific inserted tokens and verified against the actual API output.
 
-## 🚀 Live Simulation & Verified Test Cases (Visual Proofs)
+<details>
+<summary><b>Test 1 — Standard FIFO</b></summary>
 
-### 🧹 Preparation: Flush System Memory
-Before executing any test scenario, clear the database storage layer:
-```sql
-TRUNCATE TABLE bank_tokens;
-🧪 Test Case 1: Standard Serialized FIFO Execution Flow
-Scenario: Normal operations; tokens enter chronologically with no special constraints.
+Three normal tokens inserted in order, one counter available. Expected: served strictly in arrival order.
 
-SQL Insert Command:
+<img width="737" height="522" alt="Test Case 1" src="https://github.com/user-attachments/assets/4fd8a644-3ade-429e-9662-6bfb8670b6b6" />
+</details>
 
-SQL
-INSERT INTO bank_tokens (customer_name, transaction_type, amount, is_medical_emergency, is_financial_emergency, special_category, allocated_time_mins, token_status, created_at)
-VALUES 
-('Rahul Sharma', 'DEPOSIT', 45000, 0, 0, 'NONE', 12, 'WAITING', '2026-06-18 12:45:00'),
-('Ramesh Uncle', 'WITHDRAWAL', 250000, 0, 0, 'NONE', 25, 'WAITING', '2026-06-18 12:46:00'),
-('Suresh Kumar', 'DEPOSIT', 5000, 0, 0, 'NONE', 5, 'WAITING', '2026-06-18 12:47:00');
-Execution Trigger: http://127.0.0.1:8000/api/queue/dynamic-schedule?available_counters=1
+<details>
+<summary><b>Test 2 — Emergency preemption</b></summary>
 
-Execution Proof:
-<img width="737" height="522" alt="Test Case 1_Standard Serialized FIFO Execution Flow" src="https://github.com/user-attachments/assets/4fd8a644-3ade-429e-9662-6bfb8670b6b6" />
+Two medical-emergency tokens with different urgency scores. Expected: higher urgency served first, both ranked ahead of any normal token.
 
-🧪 Test Case 2: Emergency Interrupt-Driven Preemption
-Scenario: High-risk medical records intercepting an active normal queue thread.
+<img width="1037" height="421" alt="Test Case 2a" src="https://github.com/user-attachments/assets/dc51a243-c65b-4eab-83d8-f8bfab14b4ce" />
+<img width="1037" height="421" alt="Test Case 2b" src="https://github.com/user-attachments/assets/837ee1b7-34d8-4475-8a4e-b769873be03a" />
+</details>
 
-SQL Insert Command:
-INSERT INTO bank_tokens (customer_name, transaction_type, amount, is_medical_emergency, is_financial_emergency, medical_urgency_score, special_category, allocated_time_mins, token_status, created_at)
-VALUES 
-('Patient A (Low Urgency)', 'WITHDRAWAL', 20000, 1, 0, 3, 'NONE', 12, 'WAITING', '2026-06-18 12:50:00'),
-('Patient B (Accident Critical)', 'WITHDRAWAL', 80000, 1, 0, 9, 'NONE', 5, 'WAITING', '2026-06-18 12:51:00');
-Execution Proof:
-<img width="1037" height="421" alt="Test Case 2_Emergency Interrupt-Driven Preemption" src="https://github.com/user-attachments/assets/dc51a243-c65b-4eab-83d8-f8bfab14b4ce" />
-<img width="1037" height="421" alt="Test Case 2_Emergency Interrupt-Driven Preemption" src="https://github.com/user-attachments/assets/837ee1b7-34d8-4475-8a4e-b769873be03a" />
+<details>
+<summary><b>Test 3 — Counter timeout triggers aging/SJF</b></summary>
 
+A large transaction is marked `PAUSED` mid-processing. Expected: the engine switches out of FIFO mode and starts favoring shorter jobs.
 
-🧪 Test Case 3: Counter-Blocking Timeout (SJF Activation)
-Scenario: A counter operator halts a transaction, triggering the fallback aging and Shortest-Job-First (SJF) balancing layer.
+<img width="1092" height="282" alt="Test Case 3a" src="https://github.com/user-attachments/assets/3c2a70be-b77e-4947-9672-8d170aa00ea1" />
+<img width="1092" height="282" alt="Test Case 3b" src="https://github.com/user-attachments/assets/643b4e09-4d6f-429d-8daa-bb5d7ebeec4b" />
+</details>
 
-SQL Configuration Commands
-DELETE FROM bank_tokens WHERE is_medical_emergency = 1;
-UPDATE bank_tokens SET token_status = 'PAUSED' WHERE customer_name = 'Ramesh Uncle';
-UPDATE bank_tokens SET token_status = 'WAITING' WHERE customer_name = 'Rahul Sharma';
-Execution Proof:
-<img width="1092" height="282" alt="Test Case 3_Counter-Blocking Timeout (SJF Activation)" src="https://github.com/user-attachments/assets/3c2a70be-b77e-4947-9672-8d170aa00ea1" />
+<details>
+<summary><b>Test 4 — Vulnerable demographic routing</b></summary>
 
-<img width="1092" height="282" alt="Test Case 3_Counter-Blocking Timeout (SJF Activation)" src="https://github.com/user-attachments/assets/643b4e09-4d6f-429d-8daa-bb5d7ebeec4b" />
+A senior citizen and a pregnant customer enter the queue while it's in timeout/aging mode. Expected: both get priority boosts ahead of unflagged customers.
 
+<img width="1920" height="1020" alt="Test Case 4a" src="https://github.com/user-attachments/assets/5b910b92-05f7-45d4-8a09-46b6292013ba" />
+<img width="1017" height="287" alt="Test Case 4b" src="https://github.com/user-attachments/assets/261dc156-e5c3-477f-b4d1-003766f1165c" />
+</details>
 
+<details>
+<summary><b>Test 5 — Multi-counter load balancing</b></summary>
 
-🧪 Test Case 4: Vulnerable Demographic Routing Preemption
-Scenario: Senior citizens and pregnant individuals entering the pipeline during system timeouts.
+Three normal tokens, multiple counters available. Expected: round-robin assignment across counters instead of all queuing at one.
 
-SQL Setup Block:
-TRUNCATE TABLE bank_tokens;
-INSERT INTO bank_tokens (customer_name, transaction_type, amount, is_medical_emergency, is_financial_emergency, special_category, allocated_time_mins, token_status, created_at)
-VALUES 
-('Normal Customer 1', 'DEPOSIT', 50000, 0, 0, 'NONE', 12, 'WAITING', '2026-06-18 13:00:00'),
-('Ramesh Uncle (System Pauser)', 'WITHDRAWAL', 200000, 0, 0, 'NONE', 25, 'PAUSED', '2026-06-18 13:01:00'),
-('Seema Ji (Pregnant)', 'DEPOSIT', 10000, 0, 0, 'PREGNANT', 5, 'WAITING', '2026-06-18 13:02:00'),
-('Verma Ji (Senior Citizen)', 'WITHDRAWAL', 15000, 0, 0, 'SENIOR_CITIZEN', 12, 'WAITING', '2026-06-18 13:03:00');
-Execution Proof:
-<img width="1920" height="1020" alt="Test Case 4_Vulnerable Demographic Routing Preemption_1" src="https://github.com/user-attachments/assets/5b910b92-05f7-45d4-8a09-46b6292013ba" />
-<img width="1017" height="287" alt="Test Case 4_Vulnerable Demographic Routing Preemption" src="https://github.com/user-attachments/assets/261dc156-e5c3-477f-b4d1-003766f1165c" />
+<img width="1392" height="232" alt="Test Case 5a" src="https://github.com/user-attachments/assets/3129a794-43f8-4c63-9515-260e9a7d7355" />
+<img width="807" height="307" alt="Test Case 5b" src="https://github.com/user-attachments/assets/b9eaa595-60a1-4ac7-b8fd-8ecb795c921f" />
+</details>
 
-🧪 Test Case 5: Horizontal Multi-Counter Load Balancing
-Scenario: The banking facility deploys multiple operational processing windows to handle heavy traffic loads dynamically.
+## Running it locally
 
-SQL Setup Block:
-TRUNCATE TABLE bank_tokens;
-INSERT INTO bank_tokens (customer_name, transaction_type, amount, is_medical_emergency, is_financial_emergency, special_category, allocated_time_mins, token_status, created_at)
-VALUES 
-('Amit Kumar', 'DEPOSIT', 30000, 0, 0, 'NONE', 12, 'WAITING', '2026-06-18 13:10:00'),
-('Sumit Singh', 'WITHDRAWAL', 45000, 0, 0, 'NONE', 12, 'WAITING', '2026-06-18 13:11:00'),
-('Vikas Yuvraj', 'DEPOSIT', 8000, 0, 0, 'NONE', 5, 'WAITING', '2026-06-18 13:12:00');
+```bash
+pip install -r requirements.txt
+```
+Set up a MySQL database named `bank_management` with a `bank_tokens` table (columns: `token_id`, `customer_name`, `transaction_type`, `amount`, `is_medical_emergency`, `is_financial_emergency`, `medical_urgency_score`, `special_category`, `allocated_time_mins`, `remaining_time_mins`, `token_status`, `created_at`, `current_counter_id`).
 
-Execution Proof:
-<img width="1392" height="232" alt="Test Case 5_Horizontal Multi-Counter Load Balancing" src="https://github.com/user-attachments/assets/3129a794-43f8-4c63-9515-260e9a7d7355" />
-<img width="807" height="307" alt="Test Case 5_Horizontal Multi-Counter Load Balancing_1" src="https://github.com/user-attachments/assets/b9eaa595-60a1-4ac7-b8fd-8ecb795c921f" />
+```bash
+uvicorn api.index:app --reload
+```
+Then hit `http://127.0.0.1:8000/` to confirm it's up, and `http://127.0.0.1:8000/docs` for the interactive Swagger UI.
 
+## What I'd improve next
 
-
-
-
-
-
+- Move the DB credentials out of the source file and into environment variables — right now they're hardcoded, which is fine for a local prototype but not something I'd want in a repo I'm pointing recruiters to.
+- The "shortest job first" estimate is just a flat bracket based on transaction amount right now (small/medium/large → fixed minutes). A real version would learn this from actual historical service times.
+- No auth on the endpoints yet — anyone can create tokens or trigger a reschedule.
+- This is backend-only — a small frontend showing the live queue would make the demo a lot easier to follow.
