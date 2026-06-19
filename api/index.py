@@ -1,14 +1,32 @@
-from fastapi import FastAPI, Query
-import pymysql
+import os
 import datetime
+
+import pymysql
+from dotenv import load_dotenv
+from fastapi import FastAPI, Query
+
+# Loads variables from a local .env file when running locally.
+# On Vercel (or any host that injects env vars directly), this is a no-op.
+load_dotenv()
 
 app = FastAPI()
 
-# Database connection details config
-DB_HOST = "localhost"
-DB_USER = "root"
-DB_PASSWORD = "14112003"  # Securely mapped password
-DB_NAME = "bank_management"
+# ── Database connection config ───────────────────────────────────────────
+# No credentials live in source anymore — they come from the environment.
+# Locally: put them in a .env file (see .env.example).
+# On Vercel: set these as Environment Variables in the project settings.
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_USER = os.getenv("DB_USER", "root")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_NAME = os.getenv("DB_NAME", "bank_management")
+
+if not DB_PASSWORD:
+    # Fail loudly at startup instead of silently connecting with no password.
+    raise RuntimeError(
+        "DB_PASSWORD is not set. Create a .env file locally (see .env.example) "
+        "or set DB_PASSWORD as an environment variable in your deployment."
+    )
+
 
 def get_db_connection():
     try:
@@ -24,30 +42,32 @@ def get_db_connection():
         print(f"Database Connection Failed: {e}")
         return None
 
+
 @app.get("/")
 def home():
     return {"message": "Adaptive Bank Queue Engine is Live!"}
 
+
 @app.post("/api/tokens/create")
 def create_token(
-    customer_name: str, 
-    transaction_type: str, 
-    amount: int, 
-    is_medical_emergency: int, 
-    is_financial_emergency: int, 
+    customer_name: str,
+    transaction_type: str,
+    amount: int,
+    is_medical_emergency: int,
+    is_financial_emergency: int,
     special_category: str,
-    medical_urgency_score: int = 0  
+    medical_urgency_score: int = 0
 ):
     connection = get_db_connection()
     if not connection:
         return {"error": "Database down! Cannot issue token."}
-    
+
     if amount <= 10000:
-        allocated_time = 5  
+        allocated_time = 5
     elif amount <= 100000:
-        allocated_time = 12 
+        allocated_time = 12
     else:
-        allocated_time = 25 
+        allocated_time = 25
 
     try:
         with connection.cursor() as cursor:
@@ -57,18 +77,18 @@ def create_token(
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'WAITING')
             """
             cursor.execute(sql_query, (
-                customer_name, 
-                transaction_type.upper(), 
-                amount, 
-                is_medical_emergency, 
-                is_financial_emergency, 
+                customer_name,
+                transaction_type.upper(),
+                amount,
+                is_medical_emergency,
+                is_financial_emergency,
                 medical_urgency_score,
-                special_category.upper(), 
+                special_category.upper(),
                 allocated_time
             ))
             connection.commit()
             new_token_id = cursor.lastrowid
-            
+
         return {
             "status": "Success",
             "token_id": new_token_id,
@@ -79,6 +99,7 @@ def create_token(
         return {"error": f"Failed to generate token: {e}"}
     finally:
         connection.close()
+
 
 @app.get("/api/queue/dynamic-schedule")
 def get_dynamic_scheduled_queue(
@@ -91,18 +112,18 @@ def get_dynamic_scheduled_queue(
     connection = get_db_connection()
     if not connection:
         return {"error": "Database connection offline."}
-        
+
     try:
         # Convert explicitly to prevent runtime query boundary escapes
         counters_count = int(available_counters)
-        
+
         with connection.cursor() as cursor:
             cursor.execute("SELECT COUNT(*) as paused_count FROM bank_tokens WHERE token_status = 'PAUSED'")
             is_timeout_active = cursor.fetchone()['paused_count'] > 0
-            
+
             cursor.execute("SELECT current_counter_id FROM bank_tokens WHERE token_status = 'PROCESSING' AND is_medical_emergency = 1")
             busy_medical_counters = [row['current_counter_id'] for row in cursor.fetchall() if row['current_counter_id'] is not None]
-            
+
             sql = """
                 SELECT token_id, customer_name, transaction_type, amount, 
                        is_medical_emergency, is_financial_emergency, medical_urgency_score, special_category, 
@@ -112,14 +133,14 @@ def get_dynamic_scheduled_queue(
             """
             cursor.execute(sql)
             all_tokens = cursor.fetchall()
-            
+
         current_time = datetime.datetime.now()
         processed_queue = []
-        
+
         for token in all_tokens:
             wait_duration = (current_time - token['created_at']).total_seconds() / 60
             effective_time = token['remaining_time_mins'] if token['remaining_time_mins'] is not None else token['allocated_time_mins']
-            
+
             if token['is_medical_emergency'] == 1 or token['is_financial_emergency'] == 1:
                 priority_score = 0 - (token['medical_urgency_score'] * 10) + effective_time
             elif is_timeout_active:
@@ -137,9 +158,9 @@ def get_dynamic_scheduled_queue(
             token['computed_priority_rank'] = priority_score
             token['live_wait_mins'] = round(wait_duration, 1)
             processed_queue.append(token)
-            
+
         processed_queue.sort(key=lambda x: x['computed_priority_rank'])
-        
+
         # ----------------------------------------------------
         # MULTI-COUNTER DISTRIBUTED BALANCING ENGINE
         # ----------------------------------------------------
@@ -161,11 +182,11 @@ def get_dynamic_scheduled_queue(
                 else:
                     # Dynamic Round-Robin Distribution over Active Windows
                     token['current_counter_id'] = (index % counters_count) + 1
-            
+
             # Active Processing Preemption Windows Mapping
             if index < counters_count and token['token_status'] == 'WAITING':
                 token['token_status'] = 'PROCESSING'
-                    
+
         current_mode = "Multi-Emergency Interruption Mode" if any(t['is_medical_emergency'] == 1 for t in processed_queue) else ("Adaptive Priority Mode (Timeout Active)" if is_timeout_active else "Strict FIFO Mode")
 
         # ----------------------------------------------------
@@ -188,7 +209,7 @@ def get_dynamic_scheduled_queue(
             "busy_medical_counters_log": busy_medical_counters,
             "optimized_queue_flow": processed_queue
         }
-        
+
     except Exception as e:
         return {"error": f"Mission-Critical Scheduling Failed: {e}"}
     finally:
